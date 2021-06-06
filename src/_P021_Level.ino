@@ -1,7 +1,11 @@
+#include "_Plugin_Helper.h"
 #ifdef USES_P021
 //#######################################################################################################
 //#################################### Plugin 021: Level Control ########################################
 //#######################################################################################################
+
+#include "src/Helpers/Rules_calculate.h"
+#include "src/WebServer/WebServer.h"
 
 #define PLUGIN_021
 #define PLUGIN_ID_021        21
@@ -20,7 +24,7 @@ boolean Plugin_021(byte function, struct EventStruct *event, String& string)
       {
         Device[++deviceCount].Number = PLUGIN_ID_021;
         Device[deviceCount].Type = DEVICE_TYPE_SINGLE;
-        Device[deviceCount].VType = SENSOR_TYPE_SWITCH;
+        Device[deviceCount].VType = Sensor_VType::SENSOR_TYPE_SWITCH;
         Device[deviceCount].Ports = 0;
         Device[deviceCount].PullUpOption = false;
         Device[deviceCount].InverseLogicOption = false;
@@ -43,20 +47,26 @@ boolean Plugin_021(byte function, struct EventStruct *event, String& string)
         break;
       }
 
+    case PLUGIN_GET_DEVICEGPIONAMES:
+      {
+        event->String1 = formatGpioName_output(F("Level low"));
+        break;
+      }
+
     case PLUGIN_WEBFORM_LOAD:
       {
         // char tmpString[128];
 
         addHtml(F("<TR><TD>Check Task:<TD>"));
-        addTaskSelect(F("plugin_021_task"), Settings.TaskDevicePluginConfig[event->TaskIndex][0]);
+        addTaskSelect(F("p021_task"), PCONFIG(0));
 
-        LoadTaskSettings(Settings.TaskDevicePluginConfig[event->TaskIndex][0]); // we need to load the values from another task for selection!
+        LoadTaskSettings(PCONFIG(0)); // we need to load the values from another task for selection!
         addHtml(F("<TR><TD>Check Value:<TD>"));
-        addTaskValueSelect(F("plugin_021_value"), Settings.TaskDevicePluginConfig[event->TaskIndex][1], Settings.TaskDevicePluginConfig[event->TaskIndex][0]);
+        addTaskValueSelect(F("p021_value"), PCONFIG(1), PCONFIG(0));
 
-      	addFormTextBox(F("Set Level"), F("plugin_021_setvalue"), String(Settings.TaskDevicePluginConfigFloat[event->TaskIndex][0]), 8);
+      	addFormTextBox(F("Set Level"), F("p021_setvalue"), String(PCONFIG_FLOAT(0)), 8);
 
-      	addFormTextBox(F("Hysteresis"), F("plugin_021_hyst"), String(Settings.TaskDevicePluginConfigFloat[event->TaskIndex][1]), 8);
+      	addFormTextBox(F("Hysteresis"), F("p021_hyst"), String(PCONFIG_FLOAT(1)), 8);
 
         LoadTaskSettings(event->TaskIndex); // we need to restore our original taskvalues!
         success = true;
@@ -65,10 +75,10 @@ boolean Plugin_021(byte function, struct EventStruct *event, String& string)
 
     case PLUGIN_WEBFORM_SAVE:
       {
-        Settings.TaskDevicePluginConfig[event->TaskIndex][0] = getFormItemInt(F("plugin_021_task"));
-        Settings.TaskDevicePluginConfig[event->TaskIndex][1] = getFormItemInt(F("plugin_021_value"));
-        Settings.TaskDevicePluginConfigFloat[event->TaskIndex][0] = getFormItemFloat(F("plugin_021_setvalue"));
-        Settings.TaskDevicePluginConfigFloat[event->TaskIndex][1] = getFormItemFloat(F("plugin_021_hyst"));
+        PCONFIG(0) = getFormItemInt(F("p021_task"));
+        PCONFIG(1) = getFormItemInt(F("p021_value"));
+        PCONFIG_FLOAT(0) = getFormItemFloat(F("p021_setvalue"));
+        PCONFIG_FLOAT(1) = getFormItemFloat(F("p021_hyst"));
         success = true;
         break;
       }
@@ -79,11 +89,12 @@ boolean Plugin_021(byte function, struct EventStruct *event, String& string)
         if (command == F("setlevel"))
         {
           String value = parseString(string, 2);
-          float result=0;
-          Calculate(value.c_str(), &result);
-          Settings.TaskDevicePluginConfigFloat[event->TaskIndex][0] = result;
-          SaveSettings();
-          success = true;
+          double result=0;
+          if (!isError(Calculate(value, result))) {
+            PCONFIG_FLOAT(0) = result;
+            SaveSettings();
+            success = true;
+          }
         }
         break;
       }
@@ -93,7 +104,7 @@ boolean Plugin_021(byte function, struct EventStruct *event, String& string)
         String command = parseString(string, 1);
         if (command == F("getlevel"))
         {
-          string = Settings.TaskDevicePluginConfigFloat[event->TaskIndex][0];
+          string = PCONFIG_FLOAT(0);
           success = true;
         }
         break;
@@ -101,7 +112,7 @@ boolean Plugin_021(byte function, struct EventStruct *event, String& string)
 
     case PLUGIN_INIT:
       {
-        pinMode(Settings.TaskDevicePin1[event->TaskIndex], OUTPUT);
+        pinMode(CONFIG_PIN1, OUTPUT);
         success = true;
         break;
       }
@@ -109,24 +120,26 @@ boolean Plugin_021(byte function, struct EventStruct *event, String& string)
     case PLUGIN_TEN_PER_SECOND:
       {
         // we're checking a var from another task, so calculate that basevar
-        byte TaskIndex = Settings.TaskDevicePluginConfig[event->TaskIndex][0];
-        byte BaseVarIndex = TaskIndex * VARS_PER_TASK + Settings.TaskDevicePluginConfig[event->TaskIndex][1];
+        taskIndex_t TaskIndex = PCONFIG(0);
+        byte BaseVarIndex = TaskIndex * VARS_PER_TASK + PCONFIG(1);
         float value = UserVar[BaseVarIndex];
         byte state = switchstate[event->TaskIndex];
         // compare with threshold value
-        float valueLowThreshold = Settings.TaskDevicePluginConfigFloat[event->TaskIndex][0] - (Settings.TaskDevicePluginConfigFloat[event->TaskIndex][1] / 2);
-        float valueHighThreshold = Settings.TaskDevicePluginConfigFloat[event->TaskIndex][0] + (Settings.TaskDevicePluginConfigFloat[event->TaskIndex][1] / 2);
+        float valueLowThreshold = PCONFIG_FLOAT(0) - (PCONFIG_FLOAT(1) / 2);
+        float valueHighThreshold = PCONFIG_FLOAT(0) + (PCONFIG_FLOAT(1) / 2);
         if (value <= valueLowThreshold)
           state = 1;
         if (value >= valueHighThreshold)
           state = 0;
         if (state != switchstate[event->TaskIndex])
         {
-          String log = F("LEVEL: State ");
-          log += state;
-          addLog(LOG_LEVEL_INFO, log);
+          if (loglevelActiveFor(LOG_LEVEL_INFO)) {
+            String log = F("LEVEL: State ");
+            log += state;
+            addLog(LOG_LEVEL_INFO, log);
+          }
           switchstate[event->TaskIndex] = state;
-          digitalWrite(Settings.TaskDevicePin1[event->TaskIndex],state);
+          digitalWrite(CONFIG_PIN1,state);
           UserVar[event->BaseVarIndex] = state;
           sendData(event);
         }

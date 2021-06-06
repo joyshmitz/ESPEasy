@@ -1,3 +1,4 @@
+#include "_Plugin_Helper.h"
 #ifdef USES_P071
 //#######################################################################################################
 //############################# Plugin 071: Kamstrup Multical 401 #######################################
@@ -11,7 +12,10 @@
 //Device pin 2 = TX
 
 
-#include <ESPeasySoftwareSerial.h>
+#include <ESPeasySerial.h>
+
+#include "src/ESPEasyCore/Serial.h"
+
 #define PLUGIN_071
 #define PLUGIN_ID_071 71
 #define PLUGIN_NAME_071 "Communication - Kamstrup Multical 401 [TESTING]"
@@ -31,8 +35,8 @@ boolean Plugin_071(byte function, struct EventStruct *event, String& string)
     case PLUGIN_DEVICE_ADD:
       {
         Device[++deviceCount].Number = PLUGIN_ID_071;
-        Device[deviceCount].Type = DEVICE_TYPE_DUAL;
-        Device[deviceCount].VType = SENSOR_TYPE_DUAL;
+        Device[deviceCount].Type = DEVICE_TYPE_SERIAL;
+        Device[deviceCount].VType = Sensor_VType::SENSOR_TYPE_DUAL;
         Device[deviceCount].Ports = 0;
         Device[deviceCount].PullUpOption = false;
         Device[deviceCount].InverseLogicOption = false;
@@ -57,6 +61,19 @@ boolean Plugin_071(byte function, struct EventStruct *event, String& string)
         break;
       }
 
+    case PLUGIN_GET_DEVICEGPIONAMES:
+      {
+        serialHelper_getGpioNames(event);
+        break;
+      }
+
+    case PLUGIN_WEBFORM_SHOW_CONFIG:
+      {
+        string += serialHelper_getSerialTypeLabel(event);
+        success = true;
+        break;
+      }
+
     case PLUGIN_INIT:
       {
         Plugin_071_init = true;
@@ -71,12 +88,18 @@ boolean Plugin_071(byte function, struct EventStruct *event, String& string)
         break;
       }
 
+    case PLUGIN_WEBFORM_SAVE: {
+      success = true;
+      break;
+    }
+
     case PLUGIN_READ:
       {
-        PIN_KAMSER_RX = Settings.TaskDevicePin1[event->TaskIndex];
-        PIN_KAMSER_TX = Settings.TaskDevicePin2[event->TaskIndex];
+        PIN_KAMSER_RX = CONFIG_PIN1;
+        PIN_KAMSER_TX = CONFIG_PIN2;
+        const ESPEasySerialPort port = static_cast<ESPEasySerialPort>(CONFIG_PORT);
 
-        ESPeasySoftwareSerial kamSer(PIN_KAMSER_RX, PIN_KAMSER_TX, false);  // Initialize serial
+        ESPeasySerial kamSer(port, PIN_KAMSER_RX, PIN_KAMSER_TX, false);  // Initialize serial
 
         pinMode(PIN_KAMSER_RX,INPUT);
         pinMode(PIN_KAMSER_TX,OUTPUT);
@@ -115,7 +138,7 @@ boolean Plugin_071(byte function, struct EventStruct *event, String& string)
           {
             // receive byte
             r = kamSer.read();
-            //Serial.println(r);
+            //serialPrintln(r);
             if (parity_check(r))
             {
                parityerrors += 1;
@@ -134,8 +157,8 @@ boolean Plugin_071(byte function, struct EventStruct *event, String& string)
           {
             if ( parityerrors == 0 )
             {
-//              Serial.print("OK: " );
-//              Serial.println(message);
+//              serialPrint("OK: " );
+//              serialPrintln(message);
               message[i] = 0;
 
               tmpstr = strtok(message, " ");
@@ -159,25 +182,25 @@ boolean Plugin_071(byte function, struct EventStruct *event, String& string)
 
               tmpstr = strtok(NULL, " ");
               if (tmpstr)
-               m_tempin = atol(tmpstr)/100.0;
+               m_tempin = atol(tmpstr)/100.0f;
               else
                m_tempin = 0;
 
               tmpstr = strtok(NULL, " ");
               if (tmpstr)
-               m_tempout = atol(tmpstr)/100.0;
+               m_tempout = atol(tmpstr)/100.0f;
               else
                m_tempout = 0;
 
               tmpstr = strtok(NULL, " ");
               if (tmpstr)
-               m_tempdiff = atol(tmpstr)/100.0;
+               m_tempdiff = atol(tmpstr)/100.0f;
               else
                m_tempdiff = 0;
 
               tmpstr = strtok(NULL, " ");
               if (tmpstr)
-               m_power = atol(tmpstr)/10.0;
+               m_power = atol(tmpstr)/10.0f;
               else
                m_power = 0;
 
@@ -186,7 +209,7 @@ boolean Plugin_071(byte function, struct EventStruct *event, String& string)
                m_flow = atol(tmpstr);
               else
                m_flow = 0;
-
+              {
                String log = F("Kamstrup output: ");
                log += m_energy;
                log += F(" MJ;  ");
@@ -201,15 +224,15 @@ boolean Plugin_071(byte function, struct EventStruct *event, String& string)
                log += m_tempdiff;
                log += F(" C; ");
                log += m_power;
-               log += F(" ");
+               log += ' ';
                log += m_flow;
                log += F(" L/H");
 //              addLog(LOG_LEVEL_INFO, log);
-
+              }
               UserVar[event->BaseVarIndex] = m_energy; //gives energy in Wh
               UserVar[event->BaseVarIndex+1] = m_volume;  //gives volume in liters
 
-              log = F("Kamstrup  : Heat value: ");
+              String log = F("Kamstrup  : Heat value: ");
               log += m_energy/1000;
               log += F(" kWh");
               addLog(LOG_LEVEL_INFO, log);
@@ -222,7 +245,7 @@ boolean Plugin_071(byte function, struct EventStruct *event, String& string)
             {
               message[i] = 0;
               String log = F("ERR(PARITY):" );
-              Serial.print("par");
+              serialPrint("par");
               log += message;
               addLog(LOG_LEVEL_INFO, log);
               //UserVar[event->BaseVarIndex] = NAN;

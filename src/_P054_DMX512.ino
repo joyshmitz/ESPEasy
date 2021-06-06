@@ -1,3 +1,4 @@
+#include "_Plugin_Helper.h"
 #ifdef USES_P054
 //#######################################################################################################
 //######################################## Plugin 054: DMX512 TX ########################################
@@ -78,7 +79,7 @@ boolean Plugin_054(byte function, struct EventStruct *event, String& string)
         Device[++deviceCount].Number = PLUGIN_ID_054;
         Device[deviceCount].Type = DEVICE_TYPE_SINGLE;
         Device[deviceCount].Ports = 0;
-        Device[deviceCount].VType = SENSOR_TYPE_NONE;
+        Device[deviceCount].VType = Sensor_VType::SENSOR_TYPE_NONE;
         Device[deviceCount].PullUpOption = false;
         Device[deviceCount].InverseLogicOption = false;
         Device[deviceCount].FormulaOption = false;
@@ -98,8 +99,8 @@ boolean Plugin_054(byte function, struct EventStruct *event, String& string)
 
     case PLUGIN_WEBFORM_LOAD:
       {
-        Settings.TaskDevicePin1[event->TaskIndex] = 2;
-        Settings.TaskDevicePluginConfig[event->TaskIndex][0] = Plugin_054_DMXSize;
+        CONFIG_PIN1 = 2;
+        PCONFIG(0) = Plugin_054_DMXSize;
         addFormNote(F("Only GPIO-2 (D4) can be used as TX1!"));
         addFormNumericBox(F("Channels"), F("channels"), Plugin_054_DMXSize, 1, 512);
         success = true;
@@ -108,20 +109,20 @@ boolean Plugin_054(byte function, struct EventStruct *event, String& string)
 
     case PLUGIN_WEBFORM_SAVE:
       {
-        Settings.TaskDevicePin1[event->TaskIndex] = 2;
+        CONFIG_PIN1 = 2;
         if (Settings.Pin_status_led == 2)   //Status LED assigned to TX1?
           Settings.Pin_status_led = -1;
         Plugin_054_DMXSize = getFormItemInt(F("channels"));
         PLUGIN_054_Limit (Plugin_054_DMXSize, 1, 512);
-        Settings.TaskDevicePluginConfig[event->TaskIndex][0] = Plugin_054_DMXSize;
+        PCONFIG(0) = Plugin_054_DMXSize;
         success = true;
         break;
       }
 
     case PLUGIN_INIT:
       {
-        Settings.TaskDevicePin1[event->TaskIndex] = 2;   //TX1 fix to GPIO2 (D4) == onboard LED
-        Plugin_054_DMXSize = Settings.TaskDevicePluginConfig[event->TaskIndex][0];
+        CONFIG_PIN1 = 2;   //TX1 fix to GPIO2 (D4) == onboard LED
+        Plugin_054_DMXSize = PCONFIG(0);
 
         if (Plugin_054_DMXBuffer)
           delete [] Plugin_054_DMXBuffer;
@@ -160,13 +161,15 @@ boolean Plugin_054(byte function, struct EventStruct *event, String& string)
 
               if (param == F("log"))
               {
-                String log = F("DMX  : ");
-                for (int16_t i = 0; i < Plugin_054_DMXSize; i++)
-                {
-                  log += Plugin_054_DMXBuffer[i];
-                  log += F(", ");
+                if (loglevelActiveFor(LOG_LEVEL_INFO)) {
+                  String log = F("DMX  : ");
+                  for (int16_t i = 0; i < Plugin_054_DMXSize; i++)
+                  {
+                    log += Plugin_054_DMXBuffer[i];
+                    log += F(", ");
+                  }
+                  addLog(LOG_LEVEL_INFO, log);
                 }
-                addLog(LOG_LEVEL_INFO, log);
                 success = true;
               }
 
